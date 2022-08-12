@@ -9,6 +9,16 @@ const WIDTH: u32 = 500;
 const HEIGHT: u32 = 500;
 const SIZE: usize = (WIDTH * HEIGHT) as usize;
 
+fn growth(neighbours: u32) -> i32{
+    0 + {
+        if neighbours == 3 {1}
+        else {0}
+    } - {
+        if neighbours < 2 || neighbours > 3 {1}
+        else {0}
+    }
+}
+
 fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -45,10 +55,7 @@ fn main() {
         let dyn_data = dyn_mat.get_data_mut();
         for i in 0..HEIGHT {
             for j in 0..WIDTH {
-                dyn_data[(i * WIDTH + j) as usize] = {
-                    if result_data[(i * WIDTH + j) as usize] == 3 || (result_data[(i * WIDTH + j) as usize] == 2 && dyn_data[(i * WIDTH + j) as usize] == 1) {1}
-                    else {0}
-                }
+                dyn_data[(i * WIDTH + j) as usize] = (dyn_data[(i * WIDTH + j) as usize] as i32 + growth(result_data[(i * WIDTH + j) as usize])).clamp(0, 1) as u32;
             }
         }
         texture.with_lock(
