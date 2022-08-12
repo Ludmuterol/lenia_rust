@@ -1,4 +1,4 @@
- extern crate sdl2;
+extern crate sdl2;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -54,8 +54,8 @@ fn main() {
         texture.with_lock(
             None,
             |bytearray, _|{
-                for i in 0..bytearray.len() {
-                    bytearray[i] = (dyn_mat.get_data()[i / 4] * 255) as u8;
+                for (i, x) in &mut bytearray.iter_mut().enumerate() {
+                    *x = (dyn_mat.get_data()[(i / 4) as usize] * 255) as u8;
                 }
             }
         ).unwrap();
