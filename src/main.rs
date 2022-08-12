@@ -1,11 +1,13 @@
-extern crate sdl2;
+ extern crate sdl2;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::time::Duration;
+use convolve2d::*;
 
 const WIDTH: u32 = 500;
 const HEIGHT: u32 = 500;
+const SIZE: usize = (WIDTH * HEIGHT) as usize;
 
 fn main() {
     let sdl_context = sdl2::init().unwrap();
@@ -22,8 +24,8 @@ fn main() {
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let mut pxl_vec = vec![0; (WIDTH * HEIGHT) as usize].into_boxed_slice();
-    let mut tmp_vec = vec![0; (WIDTH * HEIGHT) as usize].into_boxed_slice();
+    let mut pxl_vec = vec![0; SIZE];
+        
     for i in 0..HEIGHT {
         for j in 0..WIDTH {
             pxl_vec[(i * WIDTH + j) as usize] = {
@@ -33,31 +35,27 @@ fn main() {
             }
         }
     }
+    let mut dyn_mat: DynamicMatrix<u32> = DynamicMatrix::new(WIDTH as usize, HEIGHT as usize, pxl_vec).unwrap();
+    let kernel: StaticMatrix<u32, 9> = StaticMatrix::new(3, 3, [1, 1, 1,
+                                                                1, 0, 1,
+                                                                1, 1, 1]).unwrap();
     'running: loop {
+        let result = convolve2d(&dyn_mat, &kernel);
+        let result_data = result.get_data();
+        let dyn_data = dyn_mat.get_data_mut();
         for i in 0..HEIGHT {
             for j in 0..WIDTH {
-                let mut neigbour_cells = 0;            
-                if i > 0 && j > 0 {neigbour_cells += pxl_vec[((i - 1) * WIDTH + j - 1) as usize];}
-                if i > 0 {neigbour_cells += pxl_vec[((i - 1) * WIDTH + j) as usize];}
-                if i > 0 && j < WIDTH - 1 {neigbour_cells += pxl_vec[((i - 1) * WIDTH + j + 1) as usize];}
-                if j > 0 {neigbour_cells += pxl_vec[(i * WIDTH + j - 1) as usize];}
-                if j < WIDTH - 1 {neigbour_cells += pxl_vec[(i * WIDTH + j + 1) as usize];}
-                if i < HEIGHT - 1 && j > 0 {neigbour_cells += pxl_vec[((i + 1) * WIDTH + j - 1) as usize];}
-                if i < HEIGHT - 1 {neigbour_cells += pxl_vec[((i + 1) * WIDTH + j) as usize];}
-                if i < HEIGHT - 1 && j < WIDTH - 1 {neigbour_cells += pxl_vec[((i + 1) * WIDTH + j + 1) as usize];}
-                if neigbour_cells == 3 || (neigbour_cells == 2 && pxl_vec[(i * WIDTH + j) as usize] == 1) { 
-                    tmp_vec[(i * WIDTH + j) as usize] = 1;
-                } else {
-                    tmp_vec[(i * WIDTH + j) as usize] = 0;
+                dyn_data[(i * WIDTH + j) as usize] = {
+                    if result_data[(i * WIDTH + j) as usize] == 3 || (result_data[(i * WIDTH + j) as usize] == 2 && dyn_data[(i * WIDTH + j) as usize] == 1) {1}
+                    else {0}
                 }
             }
         }
-        pxl_vec.copy_from_slice(&tmp_vec);
         texture.with_lock(
             None,
             |bytearray, _|{
                 for i in 0..bytearray.len() {
-                    bytearray[i] = pxl_vec[i / 4] * 255;
+                    bytearray[i] = (dyn_mat.get_data()[i / 4] * 255) as u8;
                 }
             }
         ).unwrap();
