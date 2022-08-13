@@ -10,8 +10,10 @@ const WIDTH: u32 = 500;
 const HEIGHT: u32 = 500;
 const SIZE: usize = (WIDTH * HEIGHT) as usize;
 
-//const STATES: u32 = 12;
 const UPDATE_FREQ: f64 = 10.;
+const KERNEL_RAD: u32 = 5;
+const KERNEL_SIZE: usize = (2 * KERNEL_RAD + 1) as usize;
+const KERNEL_TOT: usize = KERNEL_SIZE * KERNEL_SIZE;
 
 trait Sum<T> {
     fn sum(&self) -> T;
@@ -28,10 +30,10 @@ impl<T: std::convert::From<i32> + for<'a> std::ops::AddAssign<&'a T> + 'static, 
 
 fn growth(neighbours: f64) -> f64 {
     0. + {
-        if (0.20..0.25).contains(&neighbours) {1.}
+        if (0.12..0.16).contains(&neighbours) {1.}
         else {0.}
     } - {
-        if !(0.18..0.33).contains(&neighbours) {1.}
+        if !(0.12..0.16).contains(&neighbours) {1.}
         else {0.}
     }
 }
@@ -57,9 +59,11 @@ fn main() {
         *i = rng.gen();
     }
     let mut dyn_mat: DynamicMatrix<f64> = DynamicMatrix::new(WIDTH as usize, HEIGHT as usize, pxl_vec).unwrap();
-    let kern_stp: StaticMatrix<f64, 9> = StaticMatrix::new(3, 3, [1., 1., 1.,
-                                                                1., 0., 1.,
-                                                                1., 1., 1.]).unwrap();
+    let kern_stp: StaticMatrix<f64, KERNEL_TOT> = StaticMatrix::new(KERNEL_SIZE, KERNEL_SIZE, {
+        let mut x = [1.; KERNEL_TOT];
+        x[(KERNEL_RAD * ( 2 * KERNEL_RAD + 1) + KERNEL_RAD) as usize] = 0.;
+        x
+    }).unwrap();
     let sum: f64 = kern_stp.sum();
     let kernel = kern_stp.map(|x| x / sum);
     let colorgrad = colorgrad::viridis();
