@@ -8,14 +8,19 @@ use convolve2d::*;
 
 const WIDTH: u32 = 500;
 const HEIGHT: u32 = 500;
-const SIZE: usize = (WIDTH * HEIGHT) as usize;
+const PIXEL_EDGE_SIZE: u32 = 5;
 
 const UPDATE_FREQ: f64 = 10.;
 const KERNEL_RAD: u32 = 13;
-const KERNEL_SIZE: usize = (2 * KERNEL_RAD + 1) as usize;
-const KERNEL_TOT: usize = KERNEL_SIZE * KERNEL_SIZE;
 const BELL_M: f64 = 0.15;
 const BELL_S: f64 = 0.015;
+
+//calculated at compiletime
+const KERNEL_SIZE: usize = (2 * KERNEL_RAD + 1) as usize;
+const KERNEL_TOT: usize = KERNEL_SIZE * KERNEL_SIZE;
+const A_WIDTH: u32 = WIDTH / PIXEL_EDGE_SIZE;
+const A_HEIGHT: u32 = HEIGHT / PIXEL_EDGE_SIZE;
+const A_SIZE: usize = (A_WIDTH * A_HEIGHT) as usize;
 
 trait Sum<T> {
     fn sum(&self) -> T;
@@ -52,7 +57,7 @@ fn main() {
     let mut texture = texture_creator.create_texture_streaming(sdl2::pixels::PixelFormatEnum::ARGB8888, WIDTH, HEIGHT).unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let mut pxl_vec = vec![0.; SIZE];
+    let mut pxl_vec = vec![0.; A_SIZE];
 	//"name":"Orbium","R":13,"T":10,"m":0.15,"s":0.015,"b":[1] widt = 20 height = 20
 	let orbium = [0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.1 ,0.14,0.1 ,0.  ,0.  ,0.03,0.03,0.  ,0.  ,0.3 ,0.  ,0.  ,0.  ,0.  , 
                   0.  ,0.  ,0.  ,0.  ,0.  ,0.08,0.24,0.3 ,0.3 ,0.18,0.14,0.15,0.16,0.15,0.09,0.2 ,0.  ,0.  ,0.  ,0.  , 
@@ -76,21 +81,21 @@ fn main() {
 	              0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.02,0.06,0.08,0.09,0.07,0.05,0.01,0.  ,0.  ,0.  ,0.  ,0.  ];
     for i in 0..20 {
         for j in 0..20 {
-            pxl_vec[(i * WIDTH + j) as usize] = orbium[(i * 20 + j) as usize];
+            pxl_vec[(i * A_WIDTH + j) as usize] = orbium[(i * 20 + j) as usize];
         }
     }
     //let mut rng = rand::thread_rng();
     //for i in pxl_vec.iter_mut(){
     //    *i = rng.gen();
     //}
-    let mut dyn_mat: DynamicMatrix<f64> = DynamicMatrix::new(WIDTH as usize, HEIGHT as usize, pxl_vec).unwrap();
+    let mut dyn_mat: DynamicMatrix<f64> = DynamicMatrix::new(A_WIDTH as usize, A_HEIGHT as usize, pxl_vec).unwrap();
     let kern_stp: StaticMatrix<f64, KERNEL_TOT> = StaticMatrix::new(KERNEL_SIZE, KERNEL_SIZE, {
         let mut x = [0.; KERNEL_TOT];
         for i in 0..KERNEL_SIZE {
             for j in 0..KERNEL_SIZE {
                 let tmp_val = (
-                    ((i - KERNEL_RAD as usize) * (i - KERNEL_RAD as usize) + 
-                     (j - KERNEL_RAD as usize) * (j - KERNEL_RAD as usize)) as f64).sqrt() / KERNEL_RAD as f64;
+                     (i as f64 - KERNEL_RAD as f64) * (i as f64 - KERNEL_RAD as f64) + 
+                     (j as f64 - KERNEL_RAD as f64) * (j as f64 - KERNEL_RAD as f64)).sqrt() / KERNEL_RAD as f64;
                 x[(i * KERNEL_SIZE + j)] = {
                     if tmp_val < 1.0 {bell(tmp_val, 0.5, 0.15)}
                     else {0.}
@@ -106,11 +111,11 @@ fn main() {
         let result = convolve2d(&dyn_mat, &kernel);
         let result_data = result.get_data();
         let dyn_data = dyn_mat.get_data_mut();
-        for i in 0..HEIGHT {
-            for j in 0..WIDTH {
-                dyn_data[(i * WIDTH + j) as usize] = 
-                    (dyn_data[(i * WIDTH + j) as usize] as f64
-                     + ((1. / UPDATE_FREQ) * growth(result_data[(i * WIDTH + j) as usize]))).clamp(0.  , 1.);
+        for i in 0..A_HEIGHT {
+            for j in 0..A_WIDTH {
+                dyn_data[(i * A_WIDTH + j) as usize] = 
+                    (dyn_data[(i * A_WIDTH + j) as usize] as f64
+                     + ((1. / UPDATE_FREQ) * growth(result_data[(i * A_WIDTH + j) as usize]))).clamp(0.  , 1.);
             }
         }
         texture.with_lock(
@@ -120,7 +125,9 @@ fn main() {
                     for j in 0..WIDTH {
                         let offset: usize = (i * WIDTH * 4 + j * 4) as usize;
                         // WINDOWS: BGRA (endianess)
-                        let color = colorgrad.at(dyn_mat.get_data()[(i * WIDTH + j) as usize] as f64).to_rgba8();
+                        let color = colorgrad.at(dyn_mat.get_data()[
+														  ((i / PIXEL_EDGE_SIZE) * A_WIDTH 
+														   + (j / PIXEL_EDGE_SIZE)) as usize] as f64).to_rgba8();
                         bytearray[offset    ] = color[2];
                         bytearray[offset + 1] = color[1];
                         bytearray[offset + 2] = color[0];
