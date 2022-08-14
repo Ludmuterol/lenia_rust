@@ -64,6 +64,30 @@ fn convolve2d(image: &[f64], kernel: &[f64]) -> Vec<f64> {
     //    }
     //}
     //ret
+	
+	//let mut ret = vec![0.; A_SIZE];
+	//for ik in 0..KERNEL_SIZE {
+	//	for jk in 0..KERNEL_SIZE {
+	//		let kernel_val = kernel[(ik * KERNEL_SIZE + jk) as usize];
+	//		let align = (ik as isize - KERNEL_RAD as isize) * A_WIDTH as isize + jk as isize - KERNEL_RAD as isize;
+	//		for i in 0..A_HEIGHT {
+	//			for j in 0..A_WIDTH {
+	//				let tmp = image[(i * A_WIDTH + j) as usize] * kernel_val;
+	//				if align >= 0 || (i * A_WIDTH + j) > align.abs() as u32 {
+	//					for ir in 0..A_HEIGHT {
+	//						for jr in 0..A_WIDTH {
+	//							if align < 0 || (ir * A_WIDTH + jr) > align as u32 {
+	//								ret[(ir * A_WIDTH + jr) as usize] += tmp;
+	//							}
+	//						}
+	//					}
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
+	//ret
+
 	let mut ret = vec![0.; A_SIZE];
 	for ik in 0..KERNEL_SIZE {
 		for jk in 0..KERNEL_SIZE {
