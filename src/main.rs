@@ -4,7 +4,6 @@ use rand::Rng;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::time::Duration;
-use convolve2d::*;
 
 const WIDTH: u32 = 500;
 const HEIGHT: u32 = 500;
@@ -25,10 +24,10 @@ const A_SIZE: usize = (A_WIDTH * A_HEIGHT) as usize;
 trait Sum<T> {
     fn sum(&self) -> T;
 }
-impl<T: std::convert::From<i32> + for<'a> std::ops::AddAssign<&'a T> + 'static, const N: usize> Sum<T> for convolve2d::StaticMatrix<T, N> {
+impl<T: std::convert::From<i32> + for<'a> std::ops::AddAssign<&'a T> + 'static, const N: usize> Sum<T> for [T; N] {
     fn sum(&self) -> T{
         let mut sum:T = 0.into();
-        for i in self.get_data().iter(){
+        for i in self.iter(){
             sum += i;
         }
         sum
@@ -41,6 +40,30 @@ fn growth(neighbours: f64) -> f64 {
 
 fn bell(x: f64, m: f64, s: f64) -> f64 {
     f64::exp(-((x - m)/s).powi(2) / 2.)
+}
+
+fn convolve2d(image: &[f64], kernel: &[f64]) -> Vec<f64> {
+    let mut ret = image.to_vec();
+    for i in 0..A_HEIGHT {
+        for j in 0..A_WIDTH {
+            ret[(i * A_WIDTH + j) as usize] = {
+                let mut sum: f64 = 0.;
+                for ik in 0..KERNEL_SIZE {
+                    for jk in 0..KERNEL_SIZE {
+                        let mut mv_i = i as i32 + ik as i32 - KERNEL_RAD as i32;
+                        let mut mv_j = j as i32 + jk as i32 - KERNEL_RAD as i32;
+                        if mv_i < 0 {mv_i += A_HEIGHT as i32;}
+                        if mv_j < 0 {mv_j += A_WIDTH as i32;}
+                        if mv_i >= A_HEIGHT as i32 {mv_i -= A_HEIGHT as i32;}
+                        if mv_j >= A_WIDTH as i32 {mv_j -= A_WIDTH as i32;}
+                        sum += image[(mv_i * A_WIDTH as i32 + mv_j) as usize] * kernel[((KERNEL_SIZE - ik - 1) * KERNEL_SIZE + (KERNEL_SIZE - jk - 1)) as usize];
+                    }   
+                }
+                sum
+            }
+        }
+    }
+    ret
 }
 
 fn main() {
@@ -88,14 +111,13 @@ fn main() {
     //for i in pxl_vec.iter_mut(){
     //    *i = rng.gen();
     //}
-    let mut dyn_mat: DynamicMatrix<f64> = DynamicMatrix::new(A_WIDTH as usize, A_HEIGHT as usize, pxl_vec).unwrap();
-    let kern_stp: StaticMatrix<f64, KERNEL_TOT> = StaticMatrix::new(KERNEL_SIZE, KERNEL_SIZE, {
+    let kern_stp: [f64; KERNEL_TOT] = {
         let mut x = [0.; KERNEL_TOT];
         for i in 0..KERNEL_SIZE {
             for j in 0..KERNEL_SIZE {
                 let tmp_val = (
-                     (i as f64 - KERNEL_RAD as f64) * (i as f64 - KERNEL_RAD as f64) + 
-                     (j as f64 - KERNEL_RAD as f64) * (j as f64 - KERNEL_RAD as f64)).sqrt() / KERNEL_RAD as f64;
+                     (i as f64 - KERNEL_RAD as f64).powi(2) + 
+                     (j as f64 - KERNEL_RAD as f64).powi(2) ).sqrt() / KERNEL_RAD as f64;
                 x[(i * KERNEL_SIZE + j)] = {
                     if tmp_val < 1.0 {bell(tmp_val, 0.5, 0.15)}
                     else {0.}
@@ -103,19 +125,17 @@ fn main() {
             }
         }
         x
-    }).unwrap();
+    };
     let sum: f64 = kern_stp.sum();
     let kernel = kern_stp.map(|x| x / sum);
     let colorgrad = colorgrad::viridis();
     'running: loop {
-        let result = convolve2d(&dyn_mat, &kernel);
-        let result_data = result.get_data();
-        let dyn_data = dyn_mat.get_data_mut();
+        let result = convolve2d(&pxl_vec, &kernel);
         for i in 0..A_HEIGHT {
             for j in 0..A_WIDTH {
-                dyn_data[(i * A_WIDTH + j) as usize] = 
-                    (dyn_data[(i * A_WIDTH + j) as usize] as f64
-                     + ((1. / UPDATE_FREQ) * growth(result_data[(i * A_WIDTH + j) as usize]))).clamp(0.  , 1.);
+                pxl_vec[(i * A_WIDTH + j) as usize] = 
+                    (pxl_vec[(i * A_WIDTH + j) as usize] as f64
+                     + ((1. / UPDATE_FREQ) * growth(result[(i * A_WIDTH + j) as usize]))).clamp(0. , 1.);
             }
         }
         texture.with_lock(
@@ -125,9 +145,9 @@ fn main() {
                     for j in 0..WIDTH {
                         let offset: usize = (i * WIDTH * 4 + j * 4) as usize;
                         // WINDOWS: BGRA (endianess)
-                        let color = colorgrad.at(dyn_mat.get_data()[
-														  ((i / PIXEL_EDGE_SIZE) * A_WIDTH 
-														   + (j / PIXEL_EDGE_SIZE)) as usize] as f64).to_rgba8();
+                        let color = colorgrad.at(pxl_vec[
+                                                 ((i / PIXEL_EDGE_SIZE) * A_WIDTH 
+                                                  + j / PIXEL_EDGE_SIZE) as usize] as f64).to_rgba8();
                         bytearray[offset    ] = color[2];
                         bytearray[offset + 1] = color[1];
                         bytearray[offset + 2] = color[0];
