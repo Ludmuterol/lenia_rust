@@ -43,75 +43,27 @@ fn bell(x: f64, m: f64, s: f64) -> f64 {
 }
 
 fn convolve2d(image: &[f64], kernel: &[f64]) -> Vec<f64> {
-    //let mut ret = image.to_vec();
-    //for i in 0..A_HEIGHT {
-    //    for j in 0..A_WIDTH {
-    //        ret[(i * A_WIDTH + j) as usize] = {
-    //            let mut sum: f64 = 0.;
-    //            for ik in 0..KERNEL_SIZE {
-    //                for jk in 0..KERNEL_SIZE {
-    //                    let mut mv_i = i as i32 + ik as i32 - KERNEL_RAD as i32;
-    //                    let mut mv_j = j as i32 + jk as i32 - KERNEL_RAD as i32;
-    //                    if mv_i < 0 {mv_i += A_HEIGHT as i32;}
-    //                    if mv_j < 0 {mv_j += A_WIDTH as i32;}
-    //                    if mv_i >= A_HEIGHT as i32 {mv_i -= A_HEIGHT as i32;}
-    //                    if mv_j >= A_WIDTH as i32 {mv_j -= A_WIDTH as i32;}
-    //                    sum += ret[(mv_i * A_WIDTH as i32 + mv_j) as usize] * kernel[((KERNEL_SIZE - ik - 1) * KERNEL_SIZE + (KERNEL_SIZE - jk - 1)) as usize];
-    //                }   
-    //            }
-    //            sum
-    //        }
-    //    }
-    //}
-    //ret
-	
-	//let mut ret = vec![0.; A_SIZE];
-	//for ik in 0..KERNEL_SIZE {
-	//	for jk in 0..KERNEL_SIZE {
-	//		let kernel_val = kernel[(ik * KERNEL_SIZE + jk) as usize];
-	//		let align = (ik as isize - KERNEL_RAD as isize) * A_WIDTH as isize + jk as isize - KERNEL_RAD as isize;
-	//		for i in 0..A_HEIGHT {
-	//			for j in 0..A_WIDTH {
-	//				let tmp = image[(i * A_WIDTH + j) as usize] * kernel_val;
-	//				if align >= 0 || (i * A_WIDTH + j) > align.abs() as u32 {
-	//					for ir in 0..A_HEIGHT {
-	//						for jr in 0..A_WIDTH {
-	//							if align < 0 || (ir * A_WIDTH + jr) > align as u32 {
-	//								ret[(ir * A_WIDTH + jr) as usize] += tmp;
-	//							}
-	//						}
-	//					}
-	//				}
-	//			}
-	//		}
-	//	}
-	//}
-	//ret
-
-	let mut ret = vec![0.; A_SIZE];
-	for ik in 0..KERNEL_SIZE {
-		for jk in 0..KERNEL_SIZE {
-			let kernel_val = kernel[(ik * KERNEL_SIZE + jk) as usize];
-			let align = (ik as isize - KERNEL_RAD as isize) * A_WIDTH as isize + jk as isize - KERNEL_RAD as isize;
-			image
-			.iter()
-			.map(|x| x.clone() * kernel_val.clone())
-			.skip(
-				{
-					if align < 0 { align.abs() as usize}
-					else {0}
-				}
-			)
-			.zip(ret.iter_mut().skip(
-				{
-					if align < 0 { 0}
-					else {align as usize}
-				}
-			))
-			.for_each(|(n, a)| *a = a.clone() + n)
-		}
-	}
-	ret
+    let mut ret = image.to_vec();
+    for i in 0..A_HEIGHT {
+        for j in 0..A_WIDTH {
+            ret[(i * A_WIDTH + j) as usize] = {
+                let mut sum: f64 = 0.;
+                for ik in 0..KERNEL_SIZE {
+                    for jk in 0..KERNEL_SIZE {
+                        let mut mv_i = i as i32 + ik as i32 - KERNEL_RAD as i32;
+                        let mut mv_j = j as i32 + jk as i32 - KERNEL_RAD as i32;
+                        if mv_i < 0 {mv_i += A_HEIGHT as i32;}
+                        if mv_j < 0 {mv_j += A_WIDTH as i32;}
+                        if mv_i >= A_HEIGHT as i32 {mv_i -= A_HEIGHT as i32;}
+                        if mv_j >= A_WIDTH as i32 {mv_j -= A_WIDTH as i32;}
+                        sum += image[(mv_i * A_WIDTH as i32 + mv_j) as usize] * kernel[((KERNEL_SIZE - ik - 1) * KERNEL_SIZE + (KERNEL_SIZE - jk - 1)) as usize];
+                    }   
+                }
+                sum
+            }
+        }
+    }
+    ret
 }
 
 fn main() {
