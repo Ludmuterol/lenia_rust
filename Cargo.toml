@@ -9,3 +9,6 @@ edition = "2021"
 sdl2 = "0.35"
 rand = "0.8.5"
 colorgrad = "0.6.1"
+nalgebra = "0.29.0"
+fft2d = {version = "0.1.0", features = ["nalgebra"] }
+num-complex = "0.4.2"

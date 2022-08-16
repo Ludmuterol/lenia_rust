@@ -5,9 +5,13 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::time::Duration;
 
+use nalgebra::DMatrix;
+use fft2d::nalgebra::*;
+use num_complex::Complex;
+
 const WIDTH: u32 = 500;
 const HEIGHT: u32 = 500;
-const PIXEL_EDGE_SIZE: u32 = 5;
+const PIXEL_EDGE_SIZE: u32 = 2;
 
 const UPDATE_FREQ: f64 = 10.;
 const KERNEL_RAD: u32 = 13;
@@ -80,7 +84,6 @@ fn main() {
     let mut texture = texture_creator.create_texture_streaming(sdl2::pixels::PixelFormatEnum::ARGB8888, WIDTH, HEIGHT).unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let mut pxl_vec = vec![0.; A_SIZE];
 	//"name":"Orbium","R":13,"T":10,"m":0.15,"s":0.015,"b":[1] widt = 20 height = 20
 	let orbium = [0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.1 ,0.14,0.1 ,0.  ,0.  ,0.03,0.03,0.  ,0.  ,0.3 ,0.  ,0.  ,0.  ,0.  , 
                   0.  ,0.  ,0.  ,0.  ,0.  ,0.08,0.24,0.3 ,0.3 ,0.18,0.14,0.15,0.16,0.15,0.09,0.2 ,0.  ,0.  ,0.  ,0.  , 
@@ -101,7 +104,9 @@ fn main() {
                   0.  ,0.  ,0.  ,0.  ,0.1 ,0.24,0.14,0.1 ,0.15,0.29,0.45,0.53,0.52,0.46,0.4 ,0.31,0.21,0.08,0.  ,0.  , 
                   0.  ,0.  ,0.  ,0.  ,0.  ,0.08,0.21,0.21,0.22,0.29,0.36,0.39,0.37,0.33,0.26,0.18,0.09,0.  ,0.  ,0.  , 
                   0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.03,0.13,0.19,0.22,0.24,0.24,0.23,0.18,0.13,0.05,0.  ,0.  ,0.  ,0.  , 
-	              0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.02,0.06,0.08,0.09,0.07,0.05,0.01,0.  ,0.  ,0.  ,0.  ,0.  ];
+                  0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.02,0.06,0.08,0.09,0.07,0.05,0.01,0.  ,0.  ,0.  ,0.  ,0.  ];
+
+    let mut pxl_vec = vec![0.; A_SIZE];
     for i in 0..20 {
         for j in 0..20 {
             pxl_vec[(i * A_WIDTH + j) as usize] = orbium[(i * 20 + j) as usize];
@@ -111,14 +116,14 @@ fn main() {
     //for i in pxl_vec.iter_mut(){
     //    *i = rng.gen();
     //}
-    let kern_stp: [f64; KERNEL_TOT] = {
-        let mut x = [0.; KERNEL_TOT];
-        for i in 0..KERNEL_SIZE {
-            for j in 0..KERNEL_SIZE {
+    let kern_stp: [f64; A_SIZE] = {
+        let mut x = [0.; A_SIZE];
+        for i in 0..A_HEIGHT {
+            for j in 0..A_WIDTH {
                 let tmp_val = (
-                     (i as f64 - KERNEL_RAD as f64).powi(2) + 
-                     (j as f64 - KERNEL_RAD as f64).powi(2) ).sqrt() / KERNEL_RAD as f64;
-                x[(i * KERNEL_SIZE + j)] = {
+                     (i as f64 - (A_HEIGHT / 2) as f64).powi(2) + 
+                     (j as f64 - (A_WIDTH / 2 ) as f64).powi(2) ).sqrt() / KERNEL_RAD as f64;
+                x[(i * A_WIDTH + j) as usize] = {
                     if tmp_val < 1.0 {bell(tmp_val, 0.5, 0.15)}
                     else {0.}
                 };
@@ -128,14 +133,29 @@ fn main() {
     };
     let sum: f64 = kern_stp.sum();
     let kernel = kern_stp.map(|x| x / sum);
+
+    //let comp_kern: Vec<Complex<f64>> = kernel.clone().iter().map(|&x| Complex::new(x, 0.0)).collect();
+    //let mut fft_kernel = fftshift(A_WIDTH as usize, A_HEIGHT as usize, &comp_kern);
+    //fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut fft_kernel);
+
+    let mut comp_kern: DMatrix<Complex<f64>> = DMatrix::from_iterator(
+		A_WIDTH as usize,
+		A_HEIGHT as usize,
+		kernel.iter().map(|&x| Complex::new(x, 0.0))
+	);
+	comp_kern = fftshift(&comp_kern);
+    let fft_kern = fft_2d(comp_kern);
+
     let colorgrad = colorgrad::viridis();
     'running: loop {
-        let result = convolve2d(&pxl_vec, &kernel);
+        //let result = convolve2d(&pxl_vec, &kernel);
+        let image = DMatrix::from_iterator(A_HEIGHT as usize, A_WIDTH as usize, pxl_vec.iter().map(|&x| Complex::new(x, 0.0)));
+        let result = ifft_2d(fft_kern.clone() * fft_2d(image));
         for i in 0..A_HEIGHT {
             for j in 0..A_WIDTH {
                 pxl_vec[(i * A_WIDTH + j) as usize] = 
                     (pxl_vec[(i * A_WIDTH + j) as usize] as f64
-                     + ((1. / UPDATE_FREQ) * growth(result[(i * A_WIDTH + j) as usize]))).clamp(0. , 1.);
+                     + ((1. / UPDATE_FREQ) * growth(result[(i * A_WIDTH + j) as usize].re))).clamp(0. , 1.);
             }
         }
         texture.with_lock(
