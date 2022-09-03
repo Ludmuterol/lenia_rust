@@ -3,14 +3,14 @@ extern crate sdl2;
 use rand::Rng;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use fft2d::slice::{fft_2d, fftshift, ifft_2d, ifftshift};
+use fft2d::slice::{fft_2d, fftshift, ifft_2d};
 use num_complex::Complex;
 
-const WIDTH: u32 = 200;
-const HEIGHT: u32 = 200;
-const PIXEL_EDGE_SIZE: u32 = 2;
+const WIDTH: u32 = 750;
+const HEIGHT: u32 = 750;
+const PIXEL_EDGE_SIZE: u32 = 1;
 
 const UPDATE_FREQ: f64 = 10.;
 const KERNEL_RAD: u32 = 13;
@@ -18,8 +18,6 @@ const BELL_M: f64 = 0.15;
 const BELL_S: f64 = 0.015;
 
 //calculated at compiletime
-const KERNEL_SIZE: usize = (2 * KERNEL_RAD + 1) as usize;
-const KERNEL_TOT: usize = KERNEL_SIZE * KERNEL_SIZE;
 const A_WIDTH: u32 = WIDTH / PIXEL_EDGE_SIZE;
 const A_HEIGHT: u32 = HEIGHT / PIXEL_EDGE_SIZE;
 const A_SIZE: usize = (A_WIDTH * A_HEIGHT) as usize;
@@ -27,7 +25,7 @@ const A_SIZE: usize = (A_WIDTH * A_HEIGHT) as usize;
 trait Sum<T> {
     fn sum(&self) -> T;
 }
-impl<T: std::convert::From<i32> + for<'a> std::ops::AddAssign<&'a T> + 'static, const N: usize> Sum<T> for [T; N] {
+impl<T: std::convert::From<i32> + for<'a> std::ops::AddAssign<&'a T> + 'static> Sum<T> for Vec<T> {
     fn sum(&self) -> T{
         let mut sum:T = 0.into();
         for i in self.iter(){
@@ -43,30 +41,6 @@ fn growth(neighbours: f64) -> f64 {
 
 fn bell(x: f64, m: f64, s: f64) -> f64 {
     f64::exp(-((x - m)/s).powi(2) / 2.)
-}
-
-fn convolve2d(image: &[f64], kernel: &[f64]) -> Vec<f64> {
-    let mut ret = image.to_vec();
-    for i in 0..A_HEIGHT {
-        for j in 0..A_WIDTH {
-            ret[(i * A_WIDTH + j) as usize] = {
-                let mut sum: f64 = 0.;
-                for ik in 0..KERNEL_SIZE {
-                    for jk in 0..KERNEL_SIZE {
-                        let mut mv_i = i as i32 + ik as i32 - KERNEL_RAD as i32;
-                        let mut mv_j = j as i32 + jk as i32 - KERNEL_RAD as i32;
-                        if mv_i < 0 {mv_i += A_HEIGHT as i32;}
-                        if mv_j < 0 {mv_j += A_WIDTH as i32;}
-                        if mv_i >= A_HEIGHT as i32 {mv_i -= A_HEIGHT as i32;}
-                        if mv_j >= A_WIDTH as i32 {mv_j -= A_WIDTH as i32;}
-                        sum += image[(mv_i * A_WIDTH as i32 + mv_j) as usize] * kernel[((KERNEL_SIZE - ik - 1) * KERNEL_SIZE + (KERNEL_SIZE - jk - 1)) as usize];
-                    }   
-                }
-                sum
-            }
-        }
-    }
-    ret
 }
 
 fn main() {
@@ -111,44 +85,40 @@ fn main() {
             pxl_vec[(i * A_WIDTH + j) as usize] = orbium[(i * 20 + j) as usize];
         }
     }
-    //let mut rng = rand::thread_rng();
-    //for i in pxl_vec.iter_mut(){
-    //    *i = rng.gen();
-    //}
-    let kern_stp: [f64; A_SIZE] = {
-        let mut x = [0.; A_SIZE];
-        for i in 0..A_HEIGHT {
-            for j in 0..A_WIDTH {
-                let tmp_val = (
-                     (i as f64 - (A_HEIGHT / 2) as f64).powi(2) + 
-                     (j as f64 - (A_WIDTH / 2 ) as f64).powi(2) ).sqrt() / KERNEL_RAD as f64;
-                x[(i * A_WIDTH + j) as usize] = {
-                    if tmp_val < 1.0 {bell(tmp_val, 0.5, 0.15)}
-                    else {0.}
-                };
-            }
-        }
-        x
-    };
+    let mut rng = rand::thread_rng();
+    for i in pxl_vec.iter_mut(){
+        *i = rng.gen();
+    }
+	let mut kern_stp: Vec<f64> = vec![0.; A_SIZE];
+	for (i, row) in kern_stp.chunks_exact_mut(A_WIDTH as usize).enumerate() {
+		for (j, pix) in row.iter_mut().enumerate() {
+			let tmp_val = (
+				(i as f64 - (A_HEIGHT / 2) as f64).powi(2) + 
+				(j as f64 - (A_WIDTH / 2 ) as f64).powi(2) 
+			).sqrt() / KERNEL_RAD as f64;
+			*pix = {
+				if tmp_val < 1.0 {bell(tmp_val, 0.5, 0.15)}
+				else {0.}
+			};
+			
+		}
+	}
+
     let sum: f64 = kern_stp.sum();
-    let kernel = kern_stp.map(|x| x / sum);
-    let mut comp_kern: Vec<Complex<f64>> = kernel.iter().map(|&x| Complex::new(x, 0.0)).collect();
-	
-    fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut comp_kern);
+	let mut comp_kern: Vec<Complex<f64>> = kern_stp.iter().map(|&x| Complex::new(x / sum, 0.0) ).collect();
+    comp_kern = fftshift(A_WIDTH as usize, A_HEIGHT as usize, &comp_kern);
+	fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut comp_kern);
 
     let colorgrad = colorgrad::viridis();
     'running: loop {
-        //let result = convolve2d(&pxl_vec, &kernel);
+		let start = Instant::now();
         let mut image: Vec<Complex<f64>> = pxl_vec.iter().map(|&x| Complex::new(x, 0.0)).collect();
 		fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
-		image = fftshift(A_WIDTH as usize, A_HEIGHT as usize, &image);
-
-		let convo_result: Vec<Complex<f64>> = comp_kern.iter().zip(&image).map(|(k, i)| k * i).collect();
-		
-		let mut result = ifftshift(A_WIDTH as usize, A_HEIGHT as usize, &convo_result);
-		ifft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut result);
-
-		for (v, c) in pxl_vec.iter_mut().zip(&result) {
+		for (i, k) in image.iter_mut().zip(&comp_kern) {
+			*i *= k;
+		}
+		ifft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
+		for (v, c) in pxl_vec.iter_mut().zip(&image) {
 			*v = (*v + ((1. / UPDATE_FREQ) * growth((c * 1.0 / (A_WIDTH * A_HEIGHT) as f64).re))).clamp(0. , 1.);
 		}
         texture.with_lock(
@@ -181,7 +151,10 @@ fn main() {
             }
         }
         canvas.present();
-        ::std::thread::sleep(Duration::new(0,1_000_000_000u32 / 60));
+		let time = Duration::new(0,1_000_000_000u32 / 60).saturating_sub(start.elapsed());
+		if !time.is_zero() {
+        	::std::thread::sleep(time);
+		}
     }
 }
 
