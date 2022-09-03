@@ -5,12 +5,11 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::time::Duration;
 
-use nalgebra::DMatrix;
-use fft2d::nalgebra::*;
+use fft2d::slice::{fft_2d, fftshift, ifft_2d, ifftshift};
 use num_complex::Complex;
 
-const WIDTH: u32 = 500;
-const HEIGHT: u32 = 500;
+const WIDTH: u32 = 200;
+const HEIGHT: u32 = 200;
 const PIXEL_EDGE_SIZE: u32 = 2;
 
 const UPDATE_FREQ: f64 = 10.;
@@ -133,31 +132,25 @@ fn main() {
     };
     let sum: f64 = kern_stp.sum();
     let kernel = kern_stp.map(|x| x / sum);
-
-    //let comp_kern: Vec<Complex<f64>> = kernel.clone().iter().map(|&x| Complex::new(x, 0.0)).collect();
-    //let mut fft_kernel = fftshift(A_WIDTH as usize, A_HEIGHT as usize, &comp_kern);
-    //fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut fft_kernel);
-
-    let mut comp_kern: DMatrix<Complex<f64>> = DMatrix::from_iterator(
-		A_WIDTH as usize,
-		A_HEIGHT as usize,
-		kernel.iter().map(|&x| Complex::new(x, 0.0))
-	);
-	comp_kern = fftshift(&comp_kern);
-    let fft_kern = fft_2d(comp_kern);
+    let mut comp_kern: Vec<Complex<f64>> = kernel.iter().map(|&x| Complex::new(x, 0.0)).collect();
+	
+    fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut comp_kern);
 
     let colorgrad = colorgrad::viridis();
     'running: loop {
         //let result = convolve2d(&pxl_vec, &kernel);
-        let image = DMatrix::from_iterator(A_HEIGHT as usize, A_WIDTH as usize, pxl_vec.iter().map(|&x| Complex::new(x, 0.0)));
-        let result = ifft_2d(fft_kern.clone() * fft_2d(image));
-        for i in 0..A_HEIGHT {
-            for j in 0..A_WIDTH {
-                pxl_vec[(i * A_WIDTH + j) as usize] = 
-                    (pxl_vec[(i * A_WIDTH + j) as usize] as f64
-                     + ((1. / UPDATE_FREQ) * growth(result[(i * A_WIDTH + j) as usize].re))).clamp(0. , 1.);
-            }
-        }
+        let mut image: Vec<Complex<f64>> = pxl_vec.iter().map(|&x| Complex::new(x, 0.0)).collect();
+		fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
+		image = fftshift(A_WIDTH as usize, A_HEIGHT as usize, &image);
+
+		let convo_result: Vec<Complex<f64>> = comp_kern.iter().zip(&image).map(|(k, i)| k * i).collect();
+		
+		let mut result = ifftshift(A_WIDTH as usize, A_HEIGHT as usize, &convo_result);
+		ifft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut result);
+
+		for (v, c) in pxl_vec.iter_mut().zip(&result) {
+			*v = (*v + ((1. / UPDATE_FREQ) * growth((c * 1.0 / (A_WIDTH * A_HEIGHT) as f64).re))).clamp(0. , 1.);
+		}
         texture.with_lock(
             None,
             |bytearray, _|{
