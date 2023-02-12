@@ -1,7 +1,6 @@
 extern crate glium;
 
 use rand::Rng;
-use std::time::{Duration, Instant};
 use fft2d::slice::{fft_2d, fftshift, ifft_2d};
 use num_complex::Complex;
 use glium::{Surface, glutin::dpi::PhysicalSize};
@@ -9,7 +8,7 @@ use glium::{Surface, glutin::dpi::PhysicalSize};
 const WIDTH: u32 = 750;
 const HEIGHT: u32 = 750;
 const SCREEN_SIZE: PhysicalSize<u32> = PhysicalSize{ height: HEIGHT , width: WIDTH };
-const PIXEL_EDGE_SIZE: u32 = 1;
+const PIXEL_EDGE_SIZE: u32 = 5;
 
 const UPDATE_FREQ: f64 = 10.;
 const KERNEL_RAD: u32 = 13;
@@ -133,12 +132,28 @@ fn main() {
 			        *v = (*v + ((1. / UPDATE_FREQ) * growth((c * 1.0 / (A_WIDTH * A_HEIGHT) as f64).re))).clamp(0. , 1.);
 		        }
 
-                let mut buf = vec![0u8; A_SIZE * 3];
-                for (x, y) in buf.iter_mut().zip(pxl_vec.iter().flat_map(|n| std::iter::repeat(colorgrad.at(*n).to_rgba8()).enumerate().take(3)))
+                let mut buf = vec![0u8; WIDTH as usize * HEIGHT as usize * 3];
+                for (x, y) in buf
+                    .iter_mut()
+                    .zip(
+                        pxl_vec
+                        .chunks(A_WIDTH as usize)
+                        .map(|chunk|
+                            std::iter::repeat(
+                                chunk.iter()
+                                .flat_map(|n|
+                                    std::iter::repeat(
+                                        std::iter::repeat(
+                                            colorgrad.at(*n).to_rgba8()
+                                        ).enumerate().take(3)
+                                    ).take(PIXEL_EDGE_SIZE as usize).flatten()
+                                )
+                            ).take(PIXEL_EDGE_SIZE as usize).flatten()
+                        ).flatten()
+                    )
                 {
                     *x = y.1[y.0];
                 }
-        
                 let target = display.draw(); 
                 let converted_pixels = glium::texture::RawImage2d::from_raw_rgb(buf, SCREEN_SIZE.into());
                 glium::Texture2d::new(&display, converted_pixels)
