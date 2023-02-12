@@ -1,15 +1,14 @@
-extern crate sdl2;
+extern crate glium;
 
 use rand::Rng;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
 use std::time::{Duration, Instant};
-
 use fft2d::slice::{fft_2d, fftshift, ifft_2d};
 use num_complex::Complex;
+use glium::{Surface, glutin::dpi::PhysicalSize};
 
 const WIDTH: u32 = 750;
 const HEIGHT: u32 = 750;
+const SCREEN_SIZE: PhysicalSize<u32> = PhysicalSize{ height: HEIGHT , width: WIDTH };
 const PIXEL_EDGE_SIZE: u32 = 1;
 
 const UPDATE_FREQ: f64 = 10.;
@@ -44,20 +43,14 @@ fn bell(x: f64, m: f64, s: f64) -> f64 {
 }
 
 fn main() {
-	let sdl_context = sdl2::init().unwrap();
-	let video_subsystem = sdl_context.video().unwrap();
+    use glium::glutin;
 
-	let window = video_subsystem.window("Lenia", WIDTH, HEIGHT)
-		.position_centered()
-		.build()
-		.unwrap();
-	
-	let mut canvas = window.into_canvas().build().unwrap();
-	let texture_creator = canvas.texture_creator();
-	let mut texture = texture_creator.create_texture_streaming(sdl2::pixels::PixelFormatEnum::ARGB8888, WIDTH, HEIGHT).unwrap();
-	let mut event_pump = sdl_context.event_pump().unwrap();
-
-	//"name":"Orbium","R":13,"T":10,"m":0.15,"s":0.015,"b":[1] widt = 20 height = 20
+    let event_loop = glutin::event_loop::EventLoop::new();
+    let wb = glutin::window::WindowBuilder::new().with_inner_size(SCREEN_SIZE);
+    let cb = glutin::ContextBuilder::new();
+    let display = glium::Display::new(wb, cb, &event_loop).unwrap(); 
+    
+    //"name":"Orbium","R":13,"T":10,"m":0.15,"s":0.015,"b":[1] widt = 20 height = 20
 	let orbium = [
 		0.  ,0.  ,0.  ,0.  ,0.  ,0.  ,0.1 ,0.14,0.1 ,0.  ,0.  ,0.03,0.03,0.  ,0.  ,0.3 ,0.  ,0.  ,0.  ,0.  ,
 		0.  ,0.  ,0.  ,0.  ,0.  ,0.08,0.24,0.3 ,0.3 ,0.18,0.14,0.15,0.16,0.15,0.09,0.2 ,0.  ,0.  ,0.  ,0.  ,
@@ -88,7 +81,7 @@ fn main() {
 		}
 	}
 	let mut rng = rand::thread_rng();
-	for i in pxl_vec.iter_mut(){
+    for i in pxl_vec.iter_mut(){
 		*i = rng.gen();
 	}
 	let mut kern_stp: Vec<f64> = vec![0.; A_SIZE];
@@ -111,10 +104,11 @@ fn main() {
 	comp_kern = fftshift(A_WIDTH as usize, A_HEIGHT as usize, &comp_kern);
 	fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut comp_kern);
 
-	let colorgrad = colorgrad::viridis();
-	'running: loop {
-		let start = Instant::now();
-		let mut image: Vec<Complex<f64>> = pxl_vec.iter().map(|&x| Complex::new(x, 0.0)).collect();
+	let colorgrad = colorgrad::viridis();   
+
+    event_loop.run(move |ev, _, control_flow| {
+        let start = Instant::now();
+        let mut image: Vec<Complex<f64>> = pxl_vec.iter().map(|&x| Complex::new(x, 0.0)).collect();
 		fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
 		for (i, k) in image.iter_mut().zip(&comp_kern) {
 			*i *= k;
@@ -123,40 +117,38 @@ fn main() {
 		for (v, c) in pxl_vec.iter_mut().zip(&image) {
 			*v = (*v + ((1. / UPDATE_FREQ) * growth((c * 1.0 / (A_WIDTH * A_HEIGHT) as f64).re))).clamp(0. , 1.);
 		}
-		texture.with_lock(
-			None,
-			|bytearray, _|{
-				for i in 0..HEIGHT {
-					for j in 0..WIDTH {
-						let offset: usize = (i * WIDTH * 4 + j * 4) as usize;
-						// WINDOWS: BGRA (endianess)
-						let color = colorgrad.at(pxl_vec[
-							((i / PIXEL_EDGE_SIZE) * A_WIDTH + j / PIXEL_EDGE_SIZE) as usize
-						] as f64).to_rgba8();
-						bytearray[offset    ] = color[2];
-						bytearray[offset + 1] = color[1];
-						bytearray[offset + 2] = color[0];
-						bytearray[offset + 3] = 255;
-					}
-				}
-			}
-		).unwrap();
-		canvas.clear();
-		canvas.copy(&texture, None, None).unwrap();
-		for event in event_pump.poll_iter() {
-			match event {
-				Event::Quit { .. } |
-				Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-					break 'running
-				},
-				_ => ()
+
+        let mut buf = vec![0u8; A_SIZE * 3];
+        for i in 0..HEIGHT {
+			for j in 0..WIDTH {
+				let offset: usize = (i * WIDTH * 3 + j * 3) as usize;
+				let color = colorgrad.at(pxl_vec[
+					((i / PIXEL_EDGE_SIZE) * A_WIDTH + j / PIXEL_EDGE_SIZE) as usize
+				] as f64).to_rgba8();
+				buf[offset    ] = color[0];
+				buf[offset + 1] = color[1];
+				buf[offset + 2] = color[2];
 			}
 		}
-		canvas.present();
-		let time = Duration::new(0,1_000_000_000u32 / 60).saturating_sub(start.elapsed());
+
+        let target = display.draw(); 
+        let converted_pixels = glium::texture::RawImage2d::from_raw_rgb(buf, SCREEN_SIZE.into());
+        glium::Texture2d::new(&display, converted_pixels)
+            .unwrap()
+            .as_surface()
+            .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+        target.finish().unwrap();
+
+        *control_flow = match ev {
+            glutin::event::Event::WindowEvent { window_id: _, event } => match event {
+                glutin::event::WindowEvent::CloseRequested => glutin::event_loop::ControlFlow::Exit,
+                _ => glutin::event_loop::ControlFlow::Poll,
+            },
+            _ => glutin::event_loop::ControlFlow::Poll,
+        };
+        let time = Duration::new(0,1_000_000_000u32 / 60).saturating_sub(start.elapsed());
 		if !time.is_zero() {
 			::std::thread::sleep(time);
 		}
-	}
+    });
 }
-
