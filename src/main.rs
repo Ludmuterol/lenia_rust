@@ -9,7 +9,7 @@ use glium::{Surface, glutin::dpi::PhysicalSize};
 const WIDTH: u32 = 750;
 const HEIGHT: u32 = 750;
 const SCREEN_SIZE: PhysicalSize<u32> = PhysicalSize{ height: HEIGHT , width: WIDTH };
-const PIXEL_EDGE_SIZE: u32 = 5;
+const PIXEL_EDGE_SIZE: u32 = 1;
 
 const UPDATE_FREQ: f64 = 10.;
 const KERNEL_RAD: u32 = 13;
