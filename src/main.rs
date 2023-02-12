@@ -107,6 +107,21 @@ fn main() {
 	let colorgrad = colorgrad::viridis();   
 
     event_loop.run(move |ev, _, control_flow| {
+        match ev {
+            glutin::event::Event::WindowEvent { event, .. } => match event {
+                glutin::event::WindowEvent::CloseRequested => control_flow.set_exit(),
+                glutin::event::WindowEvent::KeyboardInput { input, .. } => match input.state {
+                    glutin::event::ElementState::Pressed => match input.virtual_keycode {
+                        Some(glutin::event::VirtualKeyCode::Escape) => control_flow.set_exit(), 
+                        _ => (),
+                    },
+                    _ => (),
+                },
+                _ => control_flow.set_poll(),
+            },
+            _ => control_flow.set_poll(),
+        };
+
         let start = Instant::now();
         let mut image: Vec<Complex<f64>> = pxl_vec.iter().map(|&x| Complex::new(x, 0.0)).collect();
 		fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
@@ -119,18 +134,11 @@ fn main() {
 		}
 
         let mut buf = vec![0u8; A_SIZE * 3];
-        for i in 0..HEIGHT {
-			for j in 0..WIDTH {
-				let offset: usize = (i * WIDTH * 3 + j * 3) as usize;
-				let color = colorgrad.at(pxl_vec[
-					((i / PIXEL_EDGE_SIZE) * A_WIDTH + j / PIXEL_EDGE_SIZE) as usize
-				] as f64).to_rgba8();
-				buf[offset    ] = color[0];
-				buf[offset + 1] = color[1];
-				buf[offset + 2] = color[2];
-			}
-		}
-
+        for (x, y) in buf.iter_mut().zip(pxl_vec.iter().flat_map(|n| std::iter::repeat(colorgrad.at(*n).to_rgba8()).enumerate().take(3)))
+        {
+            *x = y.1[y.0];
+        }
+        
         let target = display.draw(); 
         let converted_pixels = glium::texture::RawImage2d::from_raw_rgb(buf, SCREEN_SIZE.into());
         glium::Texture2d::new(&display, converted_pixels)
@@ -139,13 +147,6 @@ fn main() {
             .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
         target.finish().unwrap();
 
-        *control_flow = match ev {
-            glutin::event::Event::WindowEvent { window_id: _, event } => match event {
-                glutin::event::WindowEvent::CloseRequested => glutin::event_loop::ControlFlow::Exit,
-                _ => glutin::event_loop::ControlFlow::Poll,
-            },
-            _ => glutin::event_loop::ControlFlow::Poll,
-        };
         let time = Duration::new(0,1_000_000_000u32 / 60).saturating_sub(start.elapsed());
 		if !time.is_zero() {
 			::std::thread::sleep(time);
