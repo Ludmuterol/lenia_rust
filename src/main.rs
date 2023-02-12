@@ -9,7 +9,7 @@ use glium::{Surface, glutin::dpi::PhysicalSize};
 const WIDTH: u32 = 750;
 const HEIGHT: u32 = 750;
 const SCREEN_SIZE: PhysicalSize<u32> = PhysicalSize{ height: HEIGHT , width: WIDTH };
-const PIXEL_EDGE_SIZE: u32 = 1;
+const PIXEL_EDGE_SIZE: u32 = 5;
 
 const UPDATE_FREQ: f64 = 10.;
 const KERNEL_RAD: u32 = 13;
@@ -107,6 +107,9 @@ fn main() {
 	let colorgrad = colorgrad::viridis();   
 
     event_loop.run(move |ev, _, control_flow| {
+        let next_frame_time = std::time::Instant::now() + 
+            std::time::Duration::from_nanos(1_000_000_000 / 60);
+        *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
         match ev {
             glutin::event::Event::WindowEvent { event, .. } => match event {
                 glutin::event::WindowEvent::CloseRequested => control_flow.set_exit(),
@@ -119,37 +122,32 @@ fn main() {
                 },
                 _ => control_flow.set_poll(),
             },
-            _ => control_flow.set_poll(),
-        };
+            glutin::event::Event::MainEventsCleared => {
+                let mut image: Vec<Complex<f64>> = pxl_vec.iter().map(|&x| Complex::new(x, 0.0)).collect();
+		        fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
+		        for (i, k) in image.iter_mut().zip(&comp_kern) {
+			        *i *= k;
+		        }
+		        ifft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
+		        for (v, c) in pxl_vec.iter_mut().zip(&image) {
+			        *v = (*v + ((1. / UPDATE_FREQ) * growth((c * 1.0 / (A_WIDTH * A_HEIGHT) as f64).re))).clamp(0. , 1.);
+		        }
 
-        let start = Instant::now();
-        let mut image: Vec<Complex<f64>> = pxl_vec.iter().map(|&x| Complex::new(x, 0.0)).collect();
-		fft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
-		for (i, k) in image.iter_mut().zip(&comp_kern) {
-			*i *= k;
-		}
-		ifft_2d(A_WIDTH as usize, A_HEIGHT as usize, &mut image);
-		for (v, c) in pxl_vec.iter_mut().zip(&image) {
-			*v = (*v + ((1. / UPDATE_FREQ) * growth((c * 1.0 / (A_WIDTH * A_HEIGHT) as f64).re))).clamp(0. , 1.);
-		}
-
-        let mut buf = vec![0u8; A_SIZE * 3];
-        for (x, y) in buf.iter_mut().zip(pxl_vec.iter().flat_map(|n| std::iter::repeat(colorgrad.at(*n).to_rgba8()).enumerate().take(3)))
-        {
-            *x = y.1[y.0];
-        }
+                let mut buf = vec![0u8; A_SIZE * 3];
+                for (x, y) in buf.iter_mut().zip(pxl_vec.iter().flat_map(|n| std::iter::repeat(colorgrad.at(*n).to_rgba8()).enumerate().take(3)))
+                {
+                    *x = y.1[y.0];
+                }
         
-        let target = display.draw(); 
-        let converted_pixels = glium::texture::RawImage2d::from_raw_rgb(buf, SCREEN_SIZE.into());
-        glium::Texture2d::new(&display, converted_pixels)
-            .unwrap()
-            .as_surface()
-            .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
-        target.finish().unwrap();
-
-        let time = Duration::new(0,1_000_000_000u32 / 60).saturating_sub(start.elapsed());
-		if !time.is_zero() {
-			::std::thread::sleep(time);
-		}
+                let target = display.draw(); 
+                let converted_pixels = glium::texture::RawImage2d::from_raw_rgb(buf, SCREEN_SIZE.into());
+                glium::Texture2d::new(&display, converted_pixels)
+                    .unwrap()
+                    .as_surface()
+                    .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+                target.finish().unwrap();
+            },
+            _ => control_flow.set_poll(),
+        }; 
     });
 }
